@@ -1,0 +1,23 @@
+{
+  "name": "pi-diagram",
+  "version": "0.1.0",
+  "description": "pi extension: render architecture/flow diagrams inline in the transcript from declarative JSON specs, via the dynamic-diagram engine (child-process rendering, zero pi RSS cost)",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "diagram",
+    "visualization",
+    "architecture"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  }
+}
