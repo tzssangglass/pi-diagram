@@ -58,7 +58,12 @@ spec JSON shape:
 }
 Coordinates are 0-100 scene space. ids are referenced by links/packets.
 Layout: keep icon nodes WITH a status badge at y <= 75 (icon+label+badge stack ~60 units; lower collides with the caption divider).
-Animated: give "duration" (ms) and each packet "window": [start, end] — loop fractions (0..1) when that packet flies; e.g. [0.02, 0.26].
+Animated: give "duration" (ms), then prefer an "anim" verb over hand-written windows — picking a choreography is as cheap as picking an icon:
+- "anim": "seq" — strict relay, one packet at a time (pipelines, handshakes)
+- "anim": "fanout" — first half of the packet list flies out, second half flies back (fan-out/fan-in, request/response)
+- "anim": "flood" — all packets simultaneously (broadcasts)
+- "anim": "flip" — node statuses reveal in node order (state-machine stories)
+Custom timing: per-packet "window": [start, end] loop fractions (0..1), e.g. [0.02, 0.26]; full escape hatch is keyframe timelines.
 
 icon tiers (use search_icons to discover):
 - Material Symbols (3912): router, dns, cloud, storage, security, laptop, cell_tower, factory...
