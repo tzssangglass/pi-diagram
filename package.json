@@ -1,7 +1,7 @@
 {
   "name": "pi-diagram",
   "version": "0.1.0",
-  "description": "pi extension: render architecture/flow diagrams inline in the transcript from declarative JSON specs, via the dynamic-diagram engine (child-process rendering, zero pi RSS cost)",
+  "description": "pi extension: render architecture/flow diagrams from declarative JSON with asynchronous child-process rendering and bounded inline playback",
   "type": "module",
   "license": "MIT",
   "keywords": [

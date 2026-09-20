@@ -4,8 +4,9 @@ pi extension that renders **architecture / data-flow / runtime diagrams inline
 in the transcript**, from a declarative JSON spec the LLM writes.
 
 Built on the [dynamic-diagram](../dynamic-diagram) engine: rendering runs in a
-short-lived child process (~15ms, peak 10–25MB in the child, freed on exit) —
-pi's own memory is never affected.
+short-lived child process. Generation is asynchronous and cancellable; inline
+playback retains frame bytes in a bounded cache in pi. Time and memory depend
+on scene size, raster density and frame count.
 
 ## What it adds to pi
 
@@ -16,8 +17,14 @@ pi's own memory is never affected.
   fullscreen (kitty-protocol image).
 - **`/anim [sim]`** — fullscreen player for the engine's 28 built-in network
   animations (tcp handshake, tls, dns, quic, bgp, …).
-- **Inline animation** — specs with `"duration": ms` animate directly in the
-  transcript (12-frame loop cycling).
+- **Inline animation** — pass `animate: true` with a positive spec `duration`.
+  Frames follow the requested `fps` (default 24), capped at 240 per loop. The
+  full authored duration is preserved and playback follows elapsed time.
+  Omitting `animate` or setting it to false returns a static image.
+- **Adaptive presentation** — inline animation uses the host's available
+  columns. Engine `canvas.min_height` adds room and `canvas.scale` scales the
+  complete image. `layout: "flow"`, `"grid"`, or `"columns"` places nodes
+  without coordinates; see the engine spec reference for the object form.
 
 ## Requirements
 
@@ -56,15 +63,32 @@ ln -s /path/to/pi-diagram/extensions/index.ts ~/.pi/agent/extensions/pi-diagram.
 | var | meaning |
 |-----|---------|
 | `DYNAMIC_DIAGRAM_BIN` | path to the engine binary (default: `dynamic-diagram` from `PATH`) |
-| `DD_ANIM_SCALE` | animation frame raster scale, default `2` (static PNGs render at 3) |
+| `DD_ANIM_SCALE` | animation raster density, default `2`; independent of `canvas.scale` |
+| `DD_ANIM_CACHE_BYTES` | total cached base64 frame bytes, default 16 MiB |
+| `DD_DIAGRAM_TIMEOUT_MS` | static rendering/icon search timeout, default 30000 ms |
+| `DD_ANIM_TIMEOUT_MS` | animation generation timeout, default 60000 ms |
+| `DDA_SCALE` | engine static raster density, default `3` |
 
-Output files land in `<cwd>/.diagrams/<name>.{json,png,svg}` and
-`<cwd>/.diagrams/<name>.frames/`.
+Specs and posters are saved as `<cwd>/.diagrams/<name>.{json,png}`. Each
+animation uses a unique temporary directory and reads the engine's
+`frames.json` manifest. The first frame also becomes the saved poster; it
+does not require another render. Session shutdown cancels active generation,
+stops playback timers and removes owned temporary exports. Reopened history
+can show the saved poster when its temporary frames are gone.
+
+The cache and active animation count (12) are bounded. A single scheduler
+invalidates recently rendered images; hidden/offscreen rows stop scheduling
+after an idle grace period. Uncached frame reads and terminal transfer still
+cost time. Static image sizing is handled by pi's native image renderer.
+
+After updating a development checkout, rebuild the engine and use `/reload`
+in pi to load the extension changes.
 
 ## Test
 
 ```sh
-npm test   # loads the extension against a mock ExtensionAPI, asserts registrations
+npm test   # public tool behavior using a fake child engine
+DYNAMIC_DIAGRAM_TEST_BIN=/path/to/dynamic-diagram npm test  # also use the real engine
 ```
 
 The spec format is documented in the tool description itself; the full
