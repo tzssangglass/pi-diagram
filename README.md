@@ -8,6 +8,11 @@ short-lived child process. Generation is asynchronous and cancellable; inline
 playback retains frame bytes in a bounded cache in pi. Time and memory depend
 on scene size, raster density and frame count.
 
+![pi-diagram in action: one prompt to an inline animated diagram](assets/pi-session.gif)
+
+*Recorded live in pi: one English prompt → the LLM writes the spec → the
+engine renders → the animation plays inline. Full loop in 44s.*
+
 ## What it adds to pi
 
 - **`diagram` tool** — the LLM writes a JSON spec (nodes, icons, links, flying
