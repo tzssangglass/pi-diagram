@@ -3,7 +3,7 @@
 pi extension that renders **architecture / data-flow / runtime diagrams inline
 in the transcript**, from a declarative JSON spec the LLM writes.
 
-Built on the [dynamic-diagram](../dynamic-diagram) engine: rendering runs in a
+Built on the [dynamic-diagram](https://github.com/tzssangglass/dynamic-diagram) engine: rendering runs in a
 short-lived child process. Generation is asynchronous and cancellable; inline
 playback retains frame bytes in a bounded cache in pi. Time and memory depend
 on scene size, raster density and frame count.
@@ -114,5 +114,5 @@ DYNAMIC_DIAGRAM_TEST_BIN=/path/to/dynamic-diagram npm test  # also use the real 
 
 The spec format is documented in the tool description itself; the full
 reference and an authoring skill for AI agents live in the
-[dynamic-diagram](../dynamic-diagram) repo (`docs/SPEC.md`,
-`skills/dynamic-diagram/SKILL.md`).
+[dynamic-diagram](https://github.com/tzssangglass/dynamic-diagram) repo
+(`skills/dynamic-diagram/SKILL.md`, printable anywhere with `dynamic-diagram skill`).
