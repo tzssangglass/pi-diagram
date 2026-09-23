@@ -15,24 +15,32 @@ on scene size, raster density and frame count.
   searches the 11,831-icon catalog.
 - **`/diagram [name]`** — list rendered diagrams; `/diagram <name>` opens one
   fullscreen (kitty-protocol image).
-- **`/anim [sim]`** — fullscreen player for the engine's 28 built-in network
-  animations (tcp handshake, tls, dns, quic, bgp, …).
 - **Inline animation** — pass `animate: true` with a positive spec `duration`.
   Frames follow the requested `fps` (default 24), capped at 240 per loop. The
   full authored duration is preserved and playback follows elapsed time.
   Omitting `animate` or setting it to false returns a static image.
-- **Adaptive presentation** — inline animation uses the host's available
-  columns. Engine `canvas.min_height` adds room and `canvas.scale` scales the
-  complete image. `layout: "flow"`, `"grid"`, or `"columns"` places nodes
+- **Adaptive presentation** — inline animation uses the engine's presentation
+  factor within the host's available columns (default 75% with the current
+  engine). The factor comes from the frame manifest, independently of PNG
+  density. Engine `canvas.min_height` adds room and `canvas.scale` multiplies
+  the complete image's new baseline. Pi's native static-image viewer controls
+  its own viewport fitting. `layout: "flow"`, `"grid"`, or `"columns"` places nodes
   without coordinates; see the engine spec reference for the object form.
 
 ## Requirements
 
-- The engine binary, either on `PATH` or via env:
+- The engine binary. `npm install` fetches a prebuilt binary from
+  [dynamic-diagram GitHub Releases](https://github.com/tzssangglass/dynamic-diagram/releases)
+  into `vendor/bin/` via postinstall and **verifies its minisign signature**
+  (Ed25519; pubkey pinned below) before installing — skip with
+  `PI_DIAGRAM_SKIP_DOWNLOAD=1`.
+  Resolution order: `DYNAMIC_DIAGRAM_BIN` → vendored binary → `PATH`.
+  Manual alternatives:
   ```sh
+  cargo binstall dynamic-diagram   # prebuilt binary via crates.io metadata
+  # or build from source:
   cd dynamic-diagram && cargo build --release
   export DYNAMIC_DIAGRAM_BIN=$PWD/target/release/dynamic-diagram
-  # or: ln -s $PWD/target/release/dynamic-diagram ~/.local/bin/
   ```
 
 > **Inline animations need pi's fullscreen TUI mode.** Set
@@ -45,6 +53,12 @@ on scene size, raster density and frame count.
 > scrolling stays alive during playback.
 
 ## Install
+
+As a pi package from npm (postinstall downloads the engine automatically):
+
+```sh
+pi install npm:@tzssangglass/pi-diagram
+```
 
 As a pi package (from a checkout):
 
@@ -62,7 +76,9 @@ ln -s /path/to/pi-diagram/extensions/index.ts ~/.pi/agent/extensions/pi-diagram.
 
 | var | meaning |
 |-----|---------|
-| `DYNAMIC_DIAGRAM_BIN` | path to the engine binary (default: `dynamic-diagram` from `PATH`) |
+| `DYNAMIC_DIAGRAM_BIN` | path to the engine binary (default: vendored download, else `dynamic-diagram` from `PATH`) |
+| `PI_DIAGRAM_SKIP_DOWNLOAD` | skip the postinstall engine download |
+| `PI_DIAGRAM_ENGINE_BASE_URL` | override the engine download base URL (mirror/testing) |
 | `DD_ANIM_SCALE` | animation raster density, default `2`; independent of `canvas.scale` |
 | `DD_ANIM_CACHE_BYTES` | total cached base64 frame bytes, default 16 MiB |
 | `DD_DIAGRAM_TIMEOUT_MS` | static rendering/icon search timeout, default 30000 ms |

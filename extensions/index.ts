@@ -6,10 +6,11 @@
  * (the `dynamic-diagram` Rust binary). Inline frame bytes use a bounded cache.
  *
  * Saved specs/posters land in <cwd>/.diagrams/<name>.{json,png}.
- * Commands: /diagram <name> (fullscreen view) · /anim <sim> (28 sims).
+ * Commands: /diagram <name> (fullscreen view).
  *
- * Requires the engine on PATH or DYNAMIC_DIAGRAM_BIN=/path/to/dynamic-diagram.
- * Build it from the dynamic-diagram repo: cargo build --release.
+ * Engine resolution: DYNAMIC_DIAGRAM_BIN → vendor/bin (postinstall downloads
+ * a prebuilt binary from GitHub Releases) → PATH.
+ * Manual install: cargo binstall dynamic-diagram (or cargo build --release).
  *
  * NOTE: inline animations need pi's fullscreen TUI mode
  * ("tuiMode": "fullscreen" in ~/.pi/agent/settings.json) — pi's regular
@@ -20,13 +21,15 @@ import { Type } from "typebox";
 import { Image } from "@earendil-works/pi-tui";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  existsSync,
   readFileSync,
   readdirSync,
   rmSync,
 } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const DIR = ".diagrams";
 const DEFAULT_FPS = 24;
@@ -43,7 +46,16 @@ function positiveEnv(name: string, fallback: number): number {
 }
 
 function bin(): string {
-  return process.env.DYNAMIC_DIAGRAM_BIN || "dynamic-diagram";
+  if (process.env.DYNAMIC_DIAGRAM_BIN) return process.env.DYNAMIC_DIAGRAM_BIN;
+  // postinstall drops a prebuilt engine here; otherwise fall back to PATH
+  const vendored = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "vendor",
+    "bin",
+    process.platform === "win32" ? "dynamic-diagram.exe" : "dynamic-diagram",
+  );
+  return existsSync(vendored) ? vendored : "dynamic-diagram";
 }
 
 type ChildResult = {
@@ -191,12 +203,14 @@ class AdaptiveImage {
   private readonly theme: ConstructorParameters<typeof Image>[2];
   private readonly filename: string;
   private readonly onRender: () => void;
+  private readonly displayScale: number;
 
-  constructor(data: string, theme: ConstructorParameters<typeof Image>[2], filename: string, onRender = () => {}) {
+  constructor(data: string, theme: ConstructorParameters<typeof Image>[2], filename: string, displayScale: number, onRender = () => {}) {
     this.data = data;
     this.theme = theme;
     this.filename = filename;
     this.onRender = onRender;
+    this.displayScale = displayScale;
   }
 
   render(width: number): string[] {
@@ -205,7 +219,7 @@ class AdaptiveImage {
       this.renderedWidth = width;
       this.image = new Image(this.data, "image/png", this.theme, {
         filename: this.filename,
-        maxWidthCells: Math.max(1, width - 2),
+        maxWidthCells: Math.max(1, Math.floor((width - 2) * Math.min(1, this.displayScale))),
       });
     }
     return this.image.render(width);
@@ -272,7 +286,7 @@ async function cleanupPlayback(): Promise<void> {
 }
 
 type DiagramParams = { search_icons?: string; name?: string; spec?: string; animate?: boolean; fps?: number };
-type DiagramDetails = { png?: string; jsonPath?: string; frames?: string[]; durationMs?: number; msPerFrame?: number };
+type DiagramDetails = { png?: string; jsonPath?: string; frames?: string[]; durationMs?: number; msPerFrame?: number; displayScale?: number };
 type DiagramResult = {
   content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: "image/png" })[];
   details: DiagramDetails;
@@ -320,6 +334,7 @@ async function executeDiagram(params: DiagramParams, signal: AbortSignal, cwd: s
     const inputPath = join(workDir, "spec.json");
     await writeFile(inputPath, JSON.stringify(parsed, null, 2), { signal });
     let frames: string[] = [];
+    let displayScale = 1;
     if (params.animate) {
       const count = Math.max(1, Math.min(MAX_FRAMES, Math.ceil(duration * fps / 1000)));
       const frameDir = join(workDir, "frames");
@@ -331,6 +346,11 @@ async function executeDiagram(params: DiagramParams, signal: AbortSignal, cwd: s
         throw new Error("engine returned an invalid frame manifest");
       }
       frames = manifest.files.map((file: string) => join(frameDir, file));
+      // The engine owns the presentation baseline; old manifests keep their
+      // original full-width behavior. Raster density never controls cell size.
+      if (Number.isFinite(manifest.display_scale) && manifest.display_scale > 0) {
+        displayScale = manifest.display_scale;
+      }
       await FRAME_CACHE.prime(frames, signal);
     } else {
       const r = await runEngine(["spec", inputPath], { signal, timeoutMs: RENDER_TIMEOUT_MS });
@@ -345,7 +365,7 @@ async function executeDiagram(params: DiagramParams, signal: AbortSignal, cwd: s
       retainFrames = true;
       return {
         content: [{ type: "text", text: `animation: /diagram ${name} · spec ${jsonPath}` }],
-        details: { png, jsonPath, frames, durationMs: duration, msPerFrame: duration / frames.length },
+        details: { png, jsonPath, frames, durationMs: duration, msPerFrame: duration / frames.length, displayScale },
       };
     }
     const b64 = (await readFile(png, { signal })).toString("base64");
@@ -385,7 +405,7 @@ spec JSON shape:
 }
 Coordinates are 0-100 scene space. ids are referenced by links/packets.
 For automatic node placement, set layout and omit x/y on every node. Without layout, provide both x/y for each node (fixed coordinates). Measured labels/statuses determine node bounds and content height; captions follow the content.
-canvas.min_height requests more scene room; canvas.scale scales the entire presentation (2 gives 2x) independently of PNG raster density. Terminal animation width follows available host columns.
+canvas.min_height requests more scene room; canvas.scale multiplies the engine's 75% presentation baseline (2 doubles the new default) independently of PNG raster density. Terminal animation applies the engine's presentation factor within available host columns; pi's native static-image viewer controls its own fitting.
 Static output is the default, even when duration exists. For inline playback call the tool with animate:true and optional fps (default 24, at most 120). At most 240 frames are generated; the authored loop duration is preserved.
 Animated: give "duration" (ms), then prefer an "anim" verb over hand-written windows — picking a choreography is as cheap as picking an icon:
 - "anim": "seq" — strict relay, one packet at a time (pipelines, handshakes)
@@ -441,16 +461,18 @@ export default function (pi: ExtensionAPI) {
       anim.invalidate = context.invalidate;
       const index = Math.floor(((now - anim.startedAt) % anim.durationMs) / anim.durationMs * frames.length);
       const imageTheme = { fallbackColor: (text: string) => theme.fg("toolOutput", text) };
+      const displayScale = Number.isFinite(result.details.displayScale) && result.details.displayScale > 0
+        ? result.details.displayScale : 1;
       let data;
       try { data = FRAME_CACHE.get(frames[index]); }
       catch (error) {
         ANIMS.delete(key);
         // Saved transcript rows can outlive their session's temporary frames.
         if (!result.details.png) throw error;
-        return new AdaptiveImage(readFileSync(result.details.png).toString("base64"), imageTheme, result.details.png);
+        return new AdaptiveImage(readFileSync(result.details.png).toString("base64"), imageTheme, result.details.png, displayScale);
       }
       const state = anim;
-      return new AdaptiveImage(data, imageTheme, frames[index], () => {
+      return new AdaptiveImage(data, imageTheme, frames[index], displayScale, () => {
         if (ANIMS.get(key) !== state) return;
         state.lastRenderedAt = performance.now();
         ensurePlaybackTimer();
@@ -485,20 +507,6 @@ export default function (pi: ExtensionAPI) {
         const shell = process.env.SHELL || "/bin/sh";
         const script = `${shellQuote(bin())} spec ${shellQuote(jsonPath)} kitty; read -n 1 -s -r -p "press any key to return"`;
         const r = spawnSync(shell, ["-c", script], { stdio: "inherit", timeout: 300_000 });
-        done(r.status ?? 0);
-        return undefined as never;
-      });
-    },
-  });
-
-  // /anim <sim> — fullscreen animation player (Ctrl+C returns to pi)
-  pi.registerCommand("anim", {
-    description: "Play a built-in animation fullscreen: /anim [tcphs|tls|dns|quic|...] (28 sims)",
-    handler: async (args, _ctx) => {
-      const sim = args || "tcphs";
-      await _ctx.ui.custom<number | null>((tui, _theme, _kb, done) => {
-        tui.stop();
-        const r = spawnSync(bin(), ["kitty", sim], { stdio: "inherit", timeout: 600_000 });
         done(r.status ?? 0);
         return undefined as never;
       });

@@ -60,7 +60,7 @@ if (args[2] === "frames") {
     writeFileSync(out + "/" + file, Buffer.concat([png, Buffer.from([i]), suffix]));
   }
   writeFileSync(out + "/99999.png", png); // not part of this export
-  writeFileSync(out + "/frames.json", JSON.stringify({ files, count, duration: spec.duration, width: 760, height: 330, fps: count * 1000 / spec.duration }));
+  writeFileSync(out + "/frames.json", JSON.stringify({ files, count, duration: spec.duration, width: 570, height: 247.5, display_scale: 0.75 * (spec.canvas?.scale ?? 1), fps: count * 1000 / spec.duration }));
 } else {
   writeFileSync(specPath.replace(/\\.json$/, ".png"), png);
 }
@@ -87,7 +87,6 @@ assert.ok(tool, "diagram tool registered");
 assert.ok(tool.description.length > 200, "tool description teaches the spec format");
 assert.ok(tool.parameters, "tool has typebox parameters");
 assert.ok(registrations.commands.some((command) => command.name === "diagram"), "/diagram command registered");
-assert.ok(registrations.commands.some((command) => command.name === "anim"), "/anim command registered");
 assert.equal(typeof registrations.events.get("session_shutdown"), "function", "session shutdown cleanup registered");
 
 const execute = (id, params, signal) => tool.execute(id, params, signal, () => {}, { cwd: sandbox });
@@ -187,12 +186,12 @@ setCellDimensions({ widthPx: 10, heightPx: 20 });
 const firstComponent = tool.renderResult(timed, {}, theme, renderContext);
 const firstLines = firstComponent.render(120);
 const firstMeta = kittyMetadata(firstLines[0]);
-assert.equal(firstMeta.columns, 118, "image width follows the host render width");
+assert.equal(firstMeta.columns, 88, "image uses the engine's display scale within the host width");
 rmSync(timed.details.frames[0]);
 const cachedComponent = tool.renderResult(timed, {}, theme, renderContext);
 assert.doesNotThrow(() => cachedComponent.render(160), "cached bytes avoid rereading a removed frame");
 const cachedMeta = kittyMetadata(cachedComponent.render(160)[0]);
-assert.equal(cachedMeta.columns, 158, "wider hosts are not capped at 84 columns");
+assert.equal(cachedMeta.columns, 118, "scaled presentation still adapts to wider hosts");
 assert.notEqual(cachedMeta.imageId, firstMeta.imageId, "redraws retain changing kitty image identities");
 now += 200;
 const halfwayComponent = tool.renderResult(timed, {}, theme, renderContext);
@@ -243,10 +242,17 @@ if (liveEngine) {
   assert.equal(realAnimated.details.durationMs, 1000, "real engine period is preserved");
   assert.ok(realAnimated.details.frames[0].endsWith("00001.png"), "real engine manifest paths are used");
   const png = readFileSync(realAnimated.details.png);
-  assert.equal(png.readUInt32BE(16), 3040, "canvas scale and density remain independent (760 * 2 * 2)");
+  assert.equal(png.readUInt32BE(16), 2280, "base presentation, canvas scale and density compose (760 * 0.75 * 2 * 2)");
   assert.deepEqual(realAnimated.content.map((part) => part.type), ["text"], "real animation has a single custom image renderer");
   const realComponent = tool.renderResult(realAnimated, {}, theme, { toolCallId: "real-animated", invalidate: () => {} });
   assert.equal(kittyMetadata(realComponent.render(130)[0]).columns, 128, "real image adapts to terminal width");
+  const defaultSpec = JSON.parse(realSpec);
+  delete defaultSpec.canvas;
+  const realDefault = await execute("real-default", { name: "real-default", spec: JSON.stringify(defaultSpec), animate: true, fps: 2 });
+  assert.equal(realDefault.details.displayScale, 0.75, "presentation baseline is supplied by the real engine");
+  assert.equal(readFileSync(realDefault.details.png).readUInt32BE(16), 1140, "default export is 75% at the same density");
+  const defaultComponent = tool.renderResult(realDefault, {}, theme, { toolCallId: "real-default", invalidate: () => {} });
+  assert.equal(kittyMetadata(defaultComponent.render(130)[0]).columns, 96, "host fitting preserves the default 75% presentation");
   await shutdown({ type: "session_shutdown", reason: "quit" }, {});
   console.log("live engine ok: static PNG, manifest frames, 2x presentation, adaptive width");
 }
